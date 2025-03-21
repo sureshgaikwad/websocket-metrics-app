@@ -6,7 +6,8 @@ WORKDIR /opt/app-root/src
 
 # Install app dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm install --production && \
+npm cache clean --force
 
 # Bundle app source
 COPY . .
@@ -18,10 +19,9 @@ COPY . .
  #   chown -R appuser:appuser /opt/app-root/src
 
 # Switch to non-root user
-#USER appuser
 RUN chmod -R 777 /opt/app-root/src
 RUN chmod -R g+rw /opt/app-root/src/.npm
-
+USER 1001
 # Expose the application port
 EXPOSE 8080
 
