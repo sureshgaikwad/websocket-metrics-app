@@ -11,7 +11,7 @@ RUN npm install
 
 # Bundle app source
 COPY . .
-
+RUN ln -s /app/websocket-metrics-app.js /app/app.js
 # Create non-root user for security
 RUN addgroup -g 1001 -S appuser && \
     adduser -u 1001 -S appuser -G appuser && \
@@ -28,5 +28,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:8080/health/live || exit 1
 
 # Start the application
-CMD ["node", "app.js"]
+CMD ["node", "websocket-metrics-app.js"]
 
