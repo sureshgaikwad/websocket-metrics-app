@@ -1,0 +1,79 @@
+# imagestream.yaml
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: websocket-metrics-app
+  labels:
+    app: websocket-metrics-app
+spec:
+  lookupPolicy:
+    local: true
+
+---
+# buildconfig.yaml
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: websocket-metrics-app
+  labels:
+    app: websocket-metrics-app
+spec:
+  source:
+    git:
+      uri: ${GIT_REPOSITORY_URL}
+      ref: main
+    contextDir: "/"
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: websocket-metrics-app:latest
+  triggers:
+    - type: GitHub
+      github:
+        secretReference:
+          name: github-webhook-secret
+    - type: ConfigChange
+    - type: ImageChange
+  runPolicy: Serial
+
+---
+# openshift-cli-commands.sh
+#!/bin/bash
+
+# Create a new project
+oc new-project websocket-metrics-demo
+
+# Create application resources
+oc create -f imagestream.yaml
+oc create -f buildconfig.yaml
+
+# Set environment variables for the BuildConfig
+oc set env bc/websocket-metrics-app GIT_REPOSITORY_URL=https://github.com/yourusername/websocket-metrics-app.git
+
+# Start the build
+oc start-build websocket-metrics-app
+
+# Create deployment resources
+oc create -f deployment.yaml
+oc create -f service.yaml
+oc create -f route.yaml
+oc create -f servicemonitor.yaml
+oc create -f horizontalpodautoscaler.yaml
+
+# Grant service account permission to create custom metrics
+oc create clusterrolebinding metrics-server:system:auth-delegator \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=kube-system:metrics-server
+
+# Verify resources
+echo "Checking deployment status..."
+oc get deployment websocket-metrics-app
+oc get pods
+oc get svc
+oc get route
+oc get servicemonitor
+oc get hpa
