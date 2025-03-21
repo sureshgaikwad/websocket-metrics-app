@@ -32,7 +32,7 @@ The application exposes the following Prometheus metrics:
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/websocket-metrics-app.git
+   git clone https://github.com/sureshgaikwad/websocket-metrics-app.git
    cd websocket-metrics-app
    ```
 
@@ -52,7 +52,7 @@ The application exposes the following Prometheus metrics:
 4. **Set the Git repository URL in the BuildConfig**
 
    ```bash
-   oc set env bc/websocket-metrics-app GIT_REPOSITORY_URL=https://github.com/yourusername/websocket-metrics-app.git
+   oc set env bc/websocket-metrics-app GIT_REPOSITORY_URL=https://github.com/sureshgaikwad/websocket-metrics-app.git
    ```
 
 5. **Start the build**
