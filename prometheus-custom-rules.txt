@@ -1,0 +1,45 @@
+# prometheusrule.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: websocket-metrics-alerts
+  labels:
+    app: websocket-metrics-app
+    prometheus: k8s
+    role: alert-rules
+spec:
+  groups:
+  - name: websocket.rules
+    rules:
+    - alert: HighWebSocketConnections
+      expr: websocket_connections_total > 500
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High number of WebSocket connections"
+        description: "WebSocket connections have exceeded 500 for more than 5 minutes."
+        
+    - alert: HighWebSocketLatency
+      expr: histogram_quantile(0.95, sum(rate(websocket_message_latency_seconds_bucket[5m])) by (le)) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High WebSocket message processing latency"
+        description: "95th percentile of WebSocket message processing latency is above 100ms for more than 5 minutes."
+        
+    - alert: WebSocketConnectionSpike
+      expr: delta(websocket_connections_total[5m]) > 100
+      for: 1m
+      labels:
+        severity: info
+      annotations:
+        summary: "Sudden increase in WebSocket connections"
+        description: "More than 100 new WebSocket connections in the last 5 minutes."
+        
+    - record: websocket:messages_per_second
+      expr: sum(rate(websocket_messages_total[5m])) by (type)
+      
+    - record: websocket:connection_utilization_percent
+      expr: 100 * websocket_connections_total / 1000

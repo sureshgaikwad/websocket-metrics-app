@@ -1,0 +1,66 @@
+# Dockerfile
+FROM node:18-alpine
+
+# Create app directory
+WORKDIR /app
+
+# Install app dependencies
+COPY package*.json ./
+
+RUN npm install
+
+# Bundle app source
+COPY . .
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S appuser && \
+    adduser -u 1001 -S appuser -G appuser && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose the application port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget -qO- http://localhost:8080/health/live || exit 1
+
+# Start the application
+CMD ["node", "app.js"]
+
+# package.json
+{
+  "name": "websocket-metrics-app",
+  "version": "1.0.0",
+  "description": "WebSocket application with Prometheus metrics for container operations",
+  "main": "app.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "prom-client": "^14.2.0",
+    "body-parser": "^1.20.2"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "websocket",
+    "prometheus",
+    "metrics",
+    "openshift",
+    "kubernetes",
+    "container"
+  ],
+  "author": "",
+  "license": "MIT"
+}

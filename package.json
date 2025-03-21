@@ -1,0 +1,34 @@
+{
+  "name": "websocket-metrics-app",
+  "version": "1.0.0",
+  "description": "WebSocket application with Prometheus metrics for container operations",
+  "main": "app.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "prom-client": "^14.2.0",
+    "body-parser": "^1.20.2"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "websocket",
+    "prometheus",
+    "metrics",
+    "openshift",
+    "kubernetes",
+    "container"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
