@@ -6,14 +6,13 @@ WORKDIR /app
 
 # Install app dependencies
 COPY package*.json ./
-
+RUN chmod -R 777 /app/
+RUN chmod -R 777 /app/src
+RUN chmod -R g+rw /app/src/.npm
 RUN npm install
 
 # Bundle app source
 COPY . .
-
-RUN chmod -R 777 /app/src
-RUN chmod -R g+rw /app/src/.npm
 
 #RUN ln -s /app/websocket-metrics-app.js /app/app.js
 # Create non-root user for security
