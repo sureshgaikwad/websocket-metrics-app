@@ -1,27 +1,25 @@
 # Dockerfile
-#FROM node:18-alpine
-FROM ubi8/nodejs-18
+FROM node:18-alpine
+
 # Create app directory
-WORKDIR /opt/app-root/src
+WORKDIR /app
 
 # Install app dependencies
 COPY package*.json ./
-RUN npm install --production && \
-npm cache clean --force
+
+RUN npm install
 
 # Bundle app source
 COPY . .
 
-#RUN ln -s /app/websocket-metrics-app.js /app/app.js
 # Create non-root user for security
-# RUN addgroup -g 1001 -S appuser && \
+#RUN addgroup -g 1001 -S appuser && \
  #   adduser -u 1001 -S appuser -G appuser && \
- #   chown -R appuser:appuser /opt/app-root/src
+  #  chown -R appuser:appuser /app
 
 # Switch to non-root user
-RUN chmod -R 777 /opt/app-root/src
-RUN chmod -R g+rw /opt/app-root/src/.npm
-USER 1001
+USER 0
+
 # Expose the application port
 EXPOSE 8080
 
@@ -30,6 +28,4 @@ EXPOSE 8080
 #  CMD wget -qO- http://localhost:8080/health/live || exit 1
 
 # Start the application
-#CMD ["node", "app.js"]
-CMD ["npm", "start"]
-
+CMD ["node", "app.js"]
