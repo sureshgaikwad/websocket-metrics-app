@@ -1,239 +1,124 @@
-// app.js - Main application file
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const promClient = require('prom-client');
+const os = require('os');
+const prometheus = require('prom-client');
 
-// Create Express app
+// Create Express application
 const app = express();
-
-// Create and configure Prometheus metrics
-const register = new promClient.Registry();
-promClient.collectDefaultMetrics({ register });
-
-// Custom metrics for WebSocket connections
-const wsConnectionsGauge = new promClient.Gauge({
-  name: 'websocket_connections_total',
-  help: 'Total number of active WebSocket connections',
-  registers: [register]
-});
-
-const wsMessagesCounter = new promClient.Counter({
-  name: 'websocket_messages_total',
-  help: 'Total number of WebSocket messages',
-  labelNames: ['type'],
-  registers: [register]
-});
-
-const wsLatencyHistogram = new promClient.Histogram({
-  name: 'websocket_message_latency_seconds',
-  help: 'Latency of WebSocket message processing in seconds',
-  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
-  registers: [register]
-});
-
-// Custom metric for container operations
-const containerOpsCounter = new promClient.Counter({
-  name: 'container_operations_total',
-  help: 'Total number of container operations',
-  labelNames: ['operation', 'status'],
-  registers: [register]
-});
-
-// Add Prometheus middleware to expose metrics
-app.use('/metrics', async (req, res) => {
-  res.set('Content-Type', register.contentType);
-  res.end(await register.metrics());
-});
-
-// Add health check endpoints
-app.get('/health/live', (req, res) => {
-  res.status(200).send('OK');
-});
-
-app.get('/health/ready', (req, res) => {
-  res.status(200).send('Ready');
-});
-
-// Serve static files
-app.use(express.static('public'));
-
-// Simple API for container operations simulation
-app.post('/api/container/create', (req, res) => {
-  // Simulate container creation
-  setTimeout(() => {
-    containerOpsCounter.inc({ operation: 'create', status: 'success' });
-    res.json({ status: 'success', message: 'Container created successfully' });
-  }, 500);
-});
-
-app.post('/api/container/delete', (req, res) => {
-  // Simulate container deletion
-  setTimeout(() => {
-    containerOpsCounter.inc({ operation: 'delete', status: 'success' });
-    res.json({ status: 'success', message: 'Container deleted successfully' });
-  }, 200);
-});
-
-// Create HTTP server
 const server = http.createServer(app);
 
 // Create WebSocket server
 const wss = new WebSocket.Server({ server });
 
-// Track all active connections
-const clients = new Set();
+// Initialize Prometheus metrics
+prometheus.collectDefaultMetrics();
+const websocketConnections = new prometheus.Gauge({
+  name: 'websocket_active_connections',
+  help: 'Number of active WebSocket connections'
+});
 
-// Handle WebSocket connections
-wss.on('connection', (ws, req) => {
-  const clientIp = req.socket.remoteAddress;
-  console.log(`Client connected from ${clientIp}`);
-  
-  // Add to active clients and update gauge
-  clients.add(ws);
-  wsConnectionsGauge.set(clients.size);
-  
-  // Set up client properties
-  ws.isAlive = true;
-  ws.lastActivity = Date.now();
-  
-  // Handle pings to keep connection alive
-  ws.on('pong', () => {
-    ws.isAlive = true;
-    ws.lastActivity = Date.now();
+const httpRequestsTotal = new prometheus.Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'route', 'status']
+});
+
+// Add error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  // Log but don't exit the process
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Log but don't exit the process
+});
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${req.method} ${req.url} ${res.statusCode} - ${duration}ms`);
+    httpRequestsTotal.inc({ method: req.method, route: req.url, status: res.statusCode });
   });
+  next();
+});
+
+// Static files
+app.use(express.static('public'));
+
+// Health check endpoints
+app.get('/health/live', (req, res) => {
+  res.status(200).json({ status: 'UP' });
+});
+
+app.get('/health/ready', (req, res) => {
+  res.status(200).json({ status: 'UP' });
+});
+
+// Metrics endpoint for Prometheus
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', prometheus.register.contentType);
+  res.end(await prometheus.register.metrics());
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.send('WebSocket Metrics Application - Connect to /ws for WebSocket endpoint');
+});
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+  console.log('Client connected');
+  websocketConnections.inc();
+  
+  // Send system metrics to client every second
+  const interval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      const metrics = {
+        timestamp: new Date().toISOString(),
+        cpu: os.loadavg(),
+        memory: {
+          total: os.totalmem(),
+          free: os.freemem(),
+          usage: ((os.totalmem() - os.freemem()) / os.totalmem() * 100).toFixed(2)
+        },
+        uptime: os.uptime()
+      };
+      
+      ws.send(JSON.stringify(metrics));
+    }
+  }, 1000);
   
   ws.on('message', (message) => {
-    const start = process.hrtime();
-    
-    try {
-      // Try to parse message as JSON
-      let parsedMessage;
-      try {
-        parsedMessage = JSON.parse(message.toString());
-      } catch (e) {
-        parsedMessage = { text: message.toString() };
-      }
-      
-      // Process message
-      console.log(`Received from ${clientIp}:`, parsedMessage);
-      wsMessagesCounter.inc({ type: 'received' });
-      
-      // Handle container operations via WebSocket if message has operation field
-      if (parsedMessage.operation) {
-        containerOpsCounter.inc({ 
-          operation: parsedMessage.operation, 
-          status: 'initiated' 
-        });
-        
-        // Simulate processing delay based on operation
-        setTimeout(() => {
-          const response = {
-            type: 'operation_response',
-            operation: parsedMessage.operation,
-            status: 'completed',
-            timestamp: Date.now()
-          };
-          
-          ws.send(JSON.stringify(response));
-          containerOpsCounter.inc({ 
-            operation: parsedMessage.operation, 
-            status: 'completed' 
-          });
-          wsMessagesCounter.inc({ type: 'sent' });
-        }, parsedMessage.operation === 'create' ? 800 : 300);
-      } else {
-        // Echo message back to client with timestamp
-        const response = {
-          type: 'echo',
-          originalMessage: parsedMessage,
-          timestamp: Date.now()
-        };
-        
-        ws.send(JSON.stringify(response));
-        wsMessagesCounter.inc({ type: 'sent' });
-      }
-      
-      // Update last activity
-      ws.lastActivity = Date.now();
-      
-    } catch (error) {
-      console.error('Error processing message:', error);
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Error processing your message',
-        error: error.message
-      }));
-      wsMessagesCounter.inc({ type: 'error' });
-    }
-    
-    // Record latency
-    const end = process.hrtime(start);
-    const duration = end[0] + end[1] / 1e9;
-    wsLatencyHistogram.observe(duration);
+    console.log(`Received message: ${message}`);
+    // Handle client messages if needed
   });
   
-  // Handle disconnect
   ws.on('close', () => {
-    console.log(`Client disconnected from ${clientIp}`);
-    clients.delete(ws);
-    wsConnectionsGauge.set(clients.size);
+    console.log('Client disconnected');
+    websocketConnections.dec();
+    clearInterval(interval);
   });
   
-  // Handle errors
   ws.on('error', (error) => {
-    console.error(`WebSocket error for ${clientIp}:`, error);
-    clients.delete(ws);
-    wsConnectionsGauge.set(clients.size);
+    console.error('WebSocket error:', error);
+    // Handle error, but don't crash
   });
-  
-  // Send initial message
-  const welcomeMessage = {
-    type: 'welcome',
-    message: 'Connected to WebSocket server',
-    clientCount: clients.size,
-    timestamp: Date.now()
-  };
-  
-  ws.send(JSON.stringify(welcomeMessage));
-  wsMessagesCounter.inc({ type: 'sent' });
 });
 
-// Ping all clients periodically to keep connections alive and detect dead connections
-const pingInterval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      console.log('Terminating inactive connection');
-      return ws.terminate();
-    }
-    
-    ws.isAlive = false;
-    ws.ping();
-    
-    // Check for idle timeout (2 minutes)
-    const idleTime = Date.now() - ws.lastActivity;
-    if (idleTime > 120000) {
-      console.log('Closing idle connection');
-      ws.send(JSON.stringify({
-        type: 'system',
-        message: 'Closing due to inactivity',
-        timestamp: Date.now()
-      }));
-      wsMessagesCounter.inc({ type: 'system' });
-      ws.close();
-    }
-  });
-}, 30000);
-
-// Clean up interval on server close
-wss.on('close', () => {
-  clearInterval(pingInterval);
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
+  // Log the error but don't exit
 });
 
-// Start server
+// Start the server - Important: bind to 0.0.0.0, not localhost
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Metrics available at /metrics`);
-  console.log(`WebSocket server ready for connections`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health/live`);
+  console.log(`Metrics endpoint: http://localhost:${PORT}/metrics`);
 });
